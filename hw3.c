@@ -4,21 +4,19 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
-
-
 #define MAXARGS 128
 #define MAXLINE 500
 
-/* Function prototypes */
 void Eval(char *cmd);
-int parse(char *buf, char **argv);
+int parseline(char *buf, char **argv);
 int builtin_command(char **argv);
 void sigint_handler(int sig);
 void sigtstp_handler(int sig);
 
  int main()
  {
-    char cmd[MAXLINE]; 
+    char cmd[MAXLINE];
+
 
      while (1) {
 
@@ -26,19 +24,10 @@ void sigtstp_handler(int sig);
         signal(SIGTSTP, sigtstp_handler);
         printf("CS361 >");
         fgets(cmd, MAXLINE, stdin);
-
         if (feof(stdin))
            exit(0);
-           
-	int pid = fork();
-	if (pid == 0) {
-            Eval(cmd);
-   	}
-	else { 
-	    int status;
-            wait(&status);
-            printf("pid:%d status:%d\n", pid, WEXITSTATUS(status));
-	}
+
+	Eval(cmd);	
      }
 
  }
@@ -48,32 +37,49 @@ void sigtstp_handler(int sig);
 	 char *argv[MAXARGS]; 
 	 char buf[MAXLINE];
 	 int bg; 
-	 pid_t pid; 
+	 int status;
+	
+
+	 int pipefds[2];
+	 if(pipe(pipefds) == -1) {
+		 perror("pipe");
+		 exit(EXIT_FAILURE);
+	 }
+	 memset(buf, 0, 10); 
+
+
+	 pid_t pid = fork();
 
 	 strcpy(buf, cmd);
-	 bg = parse(buf, argv);
+	 bg = parseline(buf, argv);
 	 if (argv[0] == NULL)
 	 return; 
 
 	 if (strcmp(argv[0], "exit") == 0)
 		 exit(0);
 	 if (!builtin_command(argv)) {
-	 if ((pid = fork()) == 0) { 
-	 if (execve(argv[0], argv, __environ) < 0) {
-	 	printf("%s: Command not found.\n", argv[0]);
-	 	exit(0);
+	 if (pid == 0) { 
+
+	 	if (execve(argv[0], argv, __environ) < 0) {
+	 	    printf("%s: Command not found.\n", argv[0]);
+	 	    exit(0);
 	 	}
+	 }
+	 if (waitpid(pid, &status, 0) == pid) {
+		 printf("pid:%d status:%d\n", pid, WEXITSTATUS(status));
 	 }
 
 
+	 
 	 if (!bg) {
-	    int status;
+
 	 if (waitpid(pid, &status, 0) < 0)
 	    printf("waitfg: waitpid error");
 	 }
-	 else
-	    printf("%d %s", pid, cmd);
+
+	 
 	 }
+	 
 	 return;
  }
 
@@ -87,11 +93,11 @@ void sigtstp_handler(int sig);
     return 0; 
  }
 
-
- int parse(char *buf, char **argv)
+ 
+ int parseline(char *buf, char **argv)
  {
     char *delim; 
-    int argc;
+    int argc; 
     int bg; 
 
     buf[strlen(buf)-1] = ' '; 
@@ -99,18 +105,21 @@ void sigtstp_handler(int sig);
     buf++;
 
 
-    argc = 0;
+    argc = 0; 
 	while ((delim = strchr(buf, ' '))) {
-	   argv[argc++] = buf;
+	   argv[argc++] = buf; 
 	   *delim = '\0';
 	    buf = delim + 1;
-	    while (*buf && (*buf == ' ')) 
+	    while (*buf && (*buf == ' ')) {
+
 	       buf++;
+	    }
 }
     argv[argc] = NULL;
 
     if (argc == 0) 
        return 1;
+
 
     if ((bg = (*argv[argc-1] == '&')) != 0)
        argv[--argc] = NULL;
